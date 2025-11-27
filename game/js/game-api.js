@@ -292,9 +292,11 @@ export function createGame(options = {}) {
     function runFastModeLoop() {
         if (!fastModeRunning || isGameOver) return;
 
-        // Run multiple physics steps per frame for maximum speed
-        const stepsPerFrame = 10;
-        for (let i = 0; i < stepsPerFrame && !isGameOver; i++) {
+        // Run multiple physics steps per frame for maximum speed.
+        // 10 steps per frame provides a good balance between speed and browser responsiveness.
+        // Higher values may cause the browser to become unresponsive.
+        const FAST_MODE_STEPS_PER_FRAME = 10;
+        for (let i = 0; i < FAST_MODE_STEPS_PER_FRAME && !isGameOver; i++) {
             Engine.update(engine, 1000 / 60); // 60 FPS timestep
         }
 
