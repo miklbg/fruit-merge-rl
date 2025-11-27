@@ -247,8 +247,9 @@ async function runEpisode() {
             console.log(`Step reward: ${result.reward}, Total: ${totalReward}`);
         }
         
-        // Small delay to let physics update
-        await new Promise(r => setTimeout(r, 100));
+        // Delay to let physics update and cooldown to pass
+        // Use at least 500ms to account for DROP_COOLDOWN_MS (400ms) plus physics simulation
+        await new Promise(r => setTimeout(r, 500));
         obs = env.getObservation();
     }
     

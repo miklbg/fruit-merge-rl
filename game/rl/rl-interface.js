@@ -40,12 +40,15 @@ export function createRLEnvironment(gameState, config = {}) {
      * @returns {Object} Observation space specification
      */
     function getObservationSpace() {
+        // Get max fruit level from game state if available, otherwise use default
+        const maxFruitLevel = gameState.FRUITS ? gameState.FRUITS.length - 1 : 9;
+        
         return {
-            // Current fruit level to drop (0-3 for starting fruits)
-            currentFruitLevel: { type: 'discrete', min: 0, max: 9, description: 'Current fruit level to drop' },
+            // Current fruit level to drop (0-3 for starting fruits, can merge up to maxFruitLevel)
+            currentFruitLevel: { type: 'discrete', min: 0, max: maxFruitLevel, description: 'Current fruit level to drop' },
             
             // Next fruit level (0-3 for starting fruits)
-            nextFruitLevel: { type: 'discrete', min: 0, max: 9, description: 'Next fruit level in queue' },
+            nextFruitLevel: { type: 'discrete', min: 0, max: maxFruitLevel, description: 'Next fruit level in queue' },
             
             // Current score
             score: { type: 'continuous', min: 0, max: Infinity, description: 'Current game score' },
@@ -53,11 +56,11 @@ export function createRLEnvironment(gameState, config = {}) {
             // Fruits in the game (variable length array of fruit objects)
             fruits: {
                 type: 'array',
-                maxLength: 50,
+                maxLength: 50, // Reasonable upper bound based on physics constraints
                 itemSchema: {
                     x: { type: 'continuous', min: 0, max: 1, description: 'Normalized x position (0-1)' },
                     y: { type: 'continuous', min: 0, max: 1, description: 'Normalized y position (0-1)' },
-                    level: { type: 'discrete', min: 0, max: 9, description: 'Fruit level' },
+                    level: { type: 'discrete', min: 0, max: maxFruitLevel, description: 'Fruit level' },
                     velocityX: { type: 'continuous', min: -50, max: 50, description: 'X velocity' },
                     velocityY: { type: 'continuous', min: -50, max: 50, description: 'Y velocity' },
                     radius: { type: 'continuous', min: 0, max: 1, description: 'Normalized radius' }
@@ -111,7 +114,10 @@ export function createRLEnvironment(gameState, config = {}) {
         const playableWidth = maxX - minX;
 
         // Map action to position within playable area
-        const normalizedAction = action / (numDropPositions - 1);
+        // Handle edge case where numDropPositions is 1 (drop in center)
+        const normalizedAction = numDropPositions > 1 
+            ? action / (numDropPositions - 1) 
+            : 0.5;
         return minX + normalizedAction * playableWidth;
     }
 
