@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AI Training Mode for Fruit Merge Game - Train a neural network to play the game using TensorFlow.js">
+    <title>Fruit Merge - AI Training Mode</title>
+    
+    <!-- 
+        NOTE: This page uses ES6 modules and requires a local server to function.
+        Running directly from file:// will fail due to CORS restrictions.
+        Use: python3 -m http.server 8080, or any other local server.
+    -->
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="256x256" href="assets/icon.png">
+    
+    <!-- Load Tailwind CSS -->
+    <link rel="stylesheet" href="css/tailwind.min.css">
+    
+    <!-- Load Matter.js Physics Engine -->
+    <script src="matter.min.js"></script>
+    
+    <!-- Load TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #e2e8f0;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #60a5fa;
+        }
+        
+        .stat-label {
+            font-size: 0.875rem;
+            color: #94a3b8;
+            margin-top: 4px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+        
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            cursor: pointer;
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+        }
+        
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+        }
+        
+        .progress-bar {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 999px;
+            height: 8px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%);
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+        
+        .log-container {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 16px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.75rem;
+            line-height: 1.5;
+        }
+        
+        .log-entry {
+            padding: 2px 0;
+        }
+        
+        .log-info { color: #60a5fa; }
+        .log-success { color: #34d399; }
+        .log-warning { color: #fbbf24; }
+        .log-error { color: #f87171; }
+        
+        #chart-container {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 16px;
+            height: 250px;
+        }
+        
+        .canvas-chart {
+            width: 100%;
+            height: 100%;
+        }
+        
+        input[type="number"], input[type="text"] {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: white;
+            width: 100%;
+        }
+        
+        input[type="number"]:focus, input[type="text"]:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+        
+        label {
+            display: block;
+            font-size: 0.875rem;
+            color: #94a3b8;
+            margin-bottom: 4px;
+        }
+
+        .header-title {
+            font-family: 'Chewy', system-ui;
+            font-weight: 400;
+        }
+    </style>
+    
+    <!-- Load font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Chewy&display=swap" rel="stylesheet">
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="header-title text-4xl md:text-5xl text-orange-400 mb-2">🍉 Fruit Merge AI Training</h1>
+            <p class="text-gray-400">Train a neural network to play Fruit Merge using reinforcement learning</p>
+        </div>
+        
+        <!-- Main Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Controls Panel -->
+            <div class="card">
+                <h2 class="text-xl font-bold mb-4 text-blue-400">Training Controls</h2>
+                
+                <!-- Episode Settings -->
+                <div class="mb-4">
+                    <label for="num-episodes">Number of Episodes</label>
+                    <input type="number" id="num-episodes" value="1000" min="1" max="100000">
+                </div>
+                
+                <div class="mb-4">
+                    <label for="max-steps">Max Steps per Episode</label>
+                    <input type="number" id="max-steps" value="500" min="50" max="5000">
+                </div>
+                
+                <!-- Training Buttons -->
+                <div class="flex gap-2 mb-4">
+                    <button id="btn-start" class="btn-primary flex-1">
+                        <span id="start-text">▶ Start Training</span>
+                    </button>
+                    <button id="btn-stop" class="btn-danger flex-1" disabled>
+                        ⏹ Stop
+                    </button>
+                </div>
+                
+                <!-- Progress -->
+                <div class="mb-4">
+                    <div class="flex justify-between text-sm text-gray-400 mb-1">
+                        <span>Progress</span>
+                        <span id="progress-text">0 / 0 episodes</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+                
+                <!-- Model Actions -->
+                <h3 class="text-lg font-semibold mb-2 text-gray-300">Model Management</h3>
+                <div class="flex gap-2 mb-4">
+                    <button id="btn-save" class="btn-secondary flex-1">💾 Save</button>
+                    <button id="btn-load" class="btn-secondary flex-1">📂 Load</button>
+                </div>
+                
+                <div class="flex gap-2">
+                    <button id="btn-evaluate" class="btn-secondary flex-1" disabled>📊 Evaluate</button>
+                    <button id="btn-reset" class="btn-secondary flex-1">🔄 Reset</button>
+                </div>
+            </div>
+            
+            <!-- Statistics Panel -->
+            <div class="card lg:col-span-2">
+                <h2 class="text-xl font-bold mb-4 text-blue-400">Training Statistics</h2>
+                
+                <!-- Stats Grid -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <div class="stat-card">
+                        <div id="stat-episode" class="stat-value">0</div>
+                        <div class="stat-label">Episode</div>
+                    </div>
+                    <div class="stat-card">
+                        <div id="stat-score" class="stat-value">0</div>
+                        <div class="stat-label">Last Score</div>
+                    </div>
+                    <div class="stat-card">
+                        <div id="stat-max-score" class="stat-value">0</div>
+                        <div class="stat-label">Max Score</div>
+                    </div>
+                    <div class="stat-card">
+                        <div id="stat-epsilon" class="stat-value">1.00</div>
+                        <div class="stat-label">Epsilon</div>
+                    </div>
+                    <div class="stat-card">
+                        <div id="stat-avg-reward" class="stat-value">0</div>
+                        <div class="stat-label">Avg Reward (100)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div id="stat-steps" class="stat-value">0</div>
+                        <div class="stat-label">Total Steps</div>
+                    </div>
+                    <div class="stat-card">
+                        <div id="stat-memory" class="stat-value">0</div>
+                        <div class="stat-label">Memory Size</div>
+                    </div>
+                    <div class="stat-card">
+                        <div id="stat-loss" class="stat-value">-</div>
+                        <div class="stat-label">Last Loss</div>
+                    </div>
+                </div>
+                
+                <!-- Chart -->
+                <div id="chart-container">
+                    <canvas id="reward-chart" class="canvas-chart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Log Panel -->
+        <div class="card mt-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-blue-400">Training Log</h2>
+                <button id="btn-clear-log" class="text-sm text-gray-400 hover:text-white">Clear</button>
+            </div>
+            <div id="log-container" class="log-container"></div>
+        </div>
+        
+        <!-- Advanced Settings -->
+        <div class="card mt-6">
+            <h2 class="text-xl font-bold mb-4 text-blue-400">Advanced Settings</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                    <label for="learning-rate">Learning Rate</label>
+                    <input type="number" id="learning-rate" value="0.001" step="0.0001" min="0.00001" max="0.1">
+                </div>
+                <div>
+                    <label for="gamma">Gamma (Discount)</label>
+                    <input type="number" id="gamma" value="0.99" step="0.01" min="0" max="1">
+                </div>
+                <div>
+                    <label for="epsilon-decay">Epsilon Decay</label>
+                    <input type="number" id="epsilon-decay" value="0.995" step="0.001" min="0.9" max="1">
+                </div>
+                <div>
+                    <label for="batch-size">Batch Size</label>
+                    <input type="number" id="batch-size" value="32" min="1" max="256">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="text-center mt-8 text-gray-500 text-sm">
+            <p>Fruit Merge AI Training uses TensorFlow.js with Deep Q-Network (DQN)</p>
+            <p class="mt-1">
+                <a href="index.html" class="text-blue-400 hover:underline">← Back to Game</a>
+            </p>
+        </div>
+    </div>
+    
+    <script type="module">
+        import { createTrainingEnvironment } from './js/ai-training.js';
+        
+        // DOM elements
+        const btnStart = document.getElementById('btn-start');
+        const btnStop = document.getElementById('btn-stop');
+        const btnSave = document.getElementById('btn-save');
+        const btnLoad = document.getElementById('btn-load');
+        const btnEvaluate = document.getElementById('btn-evaluate');
+        const btnReset = document.getElementById('btn-reset');
+        const btnClearLog = document.getElementById('btn-clear-log');
+        
+        const numEpisodesInput = document.getElementById('num-episodes');
+        const maxStepsInput = document.getElementById('max-steps');
+        const learningRateInput = document.getElementById('learning-rate');
+        const gammaInput = document.getElementById('gamma');
+        const epsilonDecayInput = document.getElementById('epsilon-decay');
+        const batchSizeInput = document.getElementById('batch-size');
+        
+        const progressText = document.getElementById('progress-text');
+        const progressFill = document.getElementById('progress-fill');
+        
+        const statEpisode = document.getElementById('stat-episode');
+        const statScore = document.getElementById('stat-score');
+        const statMaxScore = document.getElementById('stat-max-score');
+        const statEpsilon = document.getElementById('stat-epsilon');
+        const statAvgReward = document.getElementById('stat-avg-reward');
+        const statSteps = document.getElementById('stat-steps');
+        const statMemory = document.getElementById('stat-memory');
+        const statLoss = document.getElementById('stat-loss');
+        
+        const logContainer = document.getElementById('log-container');
+        const rewardChart = document.getElementById('reward-chart');
+        
+        // Training environment
+        let env = null;
+        let chartData = { rewards: [], scores: [] };
+        let chartCtx = null;
+        
+        /**
+         * Logs a message to the training log
+         */
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+        
+        /**
+         * Updates the statistics display
+         */
+        function updateStats(result) {
+            statEpisode.textContent = result.episode;
+            statScore.textContent = result.score;
+            statMaxScore.textContent = result.maxScore;
+            statEpsilon.textContent = result.epsilon.toFixed(4);
+            statAvgReward.textContent = result.avgReward.toFixed(2);
+            statSteps.textContent = env.totalSteps;
+            statMemory.textContent = env.agent.memorySize;
+        }
+        
+        /**
+         * Updates the progress bar
+         */
+        function updateProgress(current, total) {
+            const percent = (current / total) * 100;
+            progressText.textContent = `${current} / ${total} episodes`;
+            progressFill.style.width = `${percent}%`;
+        }
+        
+        /**
+         * Draws the reward chart
+         */
+        function drawChart() {
+            if (!chartCtx) {
+                chartCtx = rewardChart.getContext('2d');
+            }
+            
+            const canvas = rewardChart;
+            const ctx = chartCtx;
+            const width = canvas.width = canvas.offsetWidth * 2;
+            const height = canvas.height = canvas.offsetHeight * 2;
+            
+            // Clear canvas
+            ctx.fillStyle = 'rgba(0, 0, 0, 0)';
+            ctx.fillRect(0, 0, width, height);
+            
+            if (chartData.rewards.length < 2) return;
+            
+            // Calculate bounds
+            const padding = 40;
+            const graphWidth = width - padding * 2;
+            const graphHeight = height - padding * 2;
+            
+            const minReward = Math.min(...chartData.rewards);
+            const maxReward = Math.max(...chartData.rewards);
+            const range = maxReward - minReward || 1;
+            
+            // Draw grid
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+            
+            for (let i = 0; i <= 4; i++) {
+                const y = padding + (graphHeight / 4) * i;
+                ctx.beginPath();
+                ctx.moveTo(padding, y);
+                ctx.lineTo(width - padding, y);
+                ctx.stroke();
+            }
+            
+            // Draw reward line
+            ctx.strokeStyle = '#60a5fa';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            const step = graphWidth / (chartData.rewards.length - 1);
+            
+            chartData.rewards.forEach((reward, i) => {
+                const x = padding + i * step;
+                const y = padding + graphHeight - ((reward - minReward) / range) * graphHeight;
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            
+            ctx.stroke();
+            
+            // Draw labels
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '20px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(maxReward.toFixed(0), padding - 8, padding + 6);
+            ctx.fillText(minReward.toFixed(0), padding - 8, height - padding + 6);
+            
+            ctx.textAlign = 'center';
+            ctx.fillText('Episode Rewards', width / 2, height - 8);
+        }
+        
+        /**
+         * Initializes the training environment
+         */
+        function initEnvironment() {
+            const agentOptions = {
+                learningRate: parseFloat(learningRateInput.value),
+                gamma: parseFloat(gammaInput.value),
+                epsilonDecay: parseFloat(epsilonDecayInput.value),
+                batchSize: parseInt(batchSizeInput.value)
+            };
+            
+            env = createTrainingEnvironment({
+                Matter: window.Matter,
+                tf: window.tf,
+                agentOptions
+            });
+            
+            env.onEpisodeEnd = (result) => {
+                updateStats(result);
+                chartData.rewards.push(result.reward);
+                chartData.scores.push(result.score);
+                
+                // Keep only last 500 data points for chart
+                if (chartData.rewards.length > 500) {
+                    chartData.rewards.shift();
+                    chartData.scores.shift();
+                }
+                
+                // Log every 10 episodes
+                if (result.episode % 10 === 0) {
+                    log(`Episode ${result.episode}: Score=${result.score}, Reward=${result.reward.toFixed(2)}, ε=${result.epsilon.toFixed(4)}`, 'success');
+                }
+                
+                drawChart();
+            };
+            
+            env.onTrainStep = ({ loss }) => {
+                if (loss !== null) {
+                    statLoss.textContent = loss.toFixed(6);
+                }
+            };
+            
+            env.init();
+            log('Training environment initialized', 'info');
+            log(`TensorFlow.js backend: ${tf.getBackend()}`, 'info');
+        }
+        
+        /**
+         * Starts training
+         */
+        async function startTraining() {
+            if (!env) {
+                initEnvironment();
+            }
+            
+            const numEpisodes = parseInt(numEpisodesInput.value);
+            const maxSteps = parseInt(maxStepsInput.value);
+            
+            btnStart.disabled = true;
+            btnStop.disabled = false;
+            btnEvaluate.disabled = true;
+            
+            log(`Starting training for ${numEpisodes} episodes...`, 'info');
+            
+            await env.train(numEpisodes, maxSteps, (result, current, total) => {
+                updateProgress(current, total);
+            });
+            
+            btnStart.disabled = false;
+            btnStop.disabled = true;
+            btnEvaluate.disabled = false;
+            
+            log('Training completed!', 'success');
+        }
+        
+        /**
+         * Stops training
+         */
+        function stopTraining() {
+            if (env) {
+                env.stopTraining();
+                log('Training stopped by user', 'warning');
+            }
+            
+            btnStart.disabled = false;
+            btnStop.disabled = true;
+            btnEvaluate.disabled = false;
+        }
+        
+        /**
+         * Saves the model
+         */
+        async function saveModel() {
+            if (env && env.agent) {
+                try {
+                    await env.saveModel('indexeddb://fruit-merge-dqn');
+                    log('Model saved to IndexedDB', 'success');
+                } catch (error) {
+                    log(`Failed to save model: ${error.message}`, 'error');
+                }
+            }
+        }
+        
+        /**
+         * Loads a model
+         */
+        async function loadModel() {
+            if (!env) {
+                initEnvironment();
+            }
+            
+            try {
+                const success = await env.loadModel('indexeddb://fruit-merge-dqn');
+                if (success) {
+                    log('Model loaded from IndexedDB', 'success');
+                    btnEvaluate.disabled = false;
+                } else {
+                    log('No saved model found', 'warning');
+                }
+            } catch (error) {
+                log(`Failed to load model: ${error.message}`, 'error');
+            }
+        }
+        
+        /**
+         * Evaluates the model
+         */
+        async function evaluateModel() {
+            if (!env) return;
+            
+            log('Evaluating model (10 episodes)...', 'info');
+            btnEvaluate.disabled = true;
+            
+            const results = await env.evaluate(10);
+            
+            log(`Evaluation complete:`, 'success');
+            log(`  Avg Score: ${results.avgScore.toFixed(2)}`, 'info');
+            log(`  Max Score: ${results.maxScore}`, 'info');
+            log(`  Min Score: ${results.minScore}`, 'info');
+            log(`  Avg Reward: ${results.avgReward.toFixed(2)}`, 'info');
+            
+            btnEvaluate.disabled = false;
+        }
+        
+        /**
+         * Resets the training environment
+         */
+        function resetEnvironment() {
+            if (env) {
+                env.dispose();
+                env = null;
+            }
+            
+            chartData = { rewards: [], scores: [] };
+            
+            // Reset UI
+            statEpisode.textContent = '0';
+            statScore.textContent = '0';
+            statMaxScore.textContent = '0';
+            statEpsilon.textContent = '1.00';
+            statAvgReward.textContent = '0';
+            statSteps.textContent = '0';
+            statMemory.textContent = '0';
+            statLoss.textContent = '-';
+            
+            updateProgress(0, 0);
+            drawChart();
+            
+            log('Environment reset', 'info');
+            
+            btnStart.disabled = false;
+            btnStop.disabled = true;
+            btnEvaluate.disabled = true;
+        }
+        
+        /**
+         * Clears the log
+         */
+        function clearLog() {
+            logContainer.innerHTML = '';
+        }
+        
+        // Event listeners
+        btnStart.addEventListener('click', startTraining);
+        btnStop.addEventListener('click', stopTraining);
+        btnSave.addEventListener('click', saveModel);
+        btnLoad.addEventListener('click', loadModel);
+        btnEvaluate.addEventListener('click', evaluateModel);
+        btnReset.addEventListener('click', resetEnvironment);
+        btnClearLog.addEventListener('click', clearLog);
+        
+        // Initial setup
+        window.addEventListener('load', () => {
+            drawChart();
+            log('Ready. Click "Start Training" to begin.', 'info');
+            log('Training runs in headless mode for maximum speed.', 'info');
+        });
+        
+        // Prevent accidental page close during training
+        window.addEventListener('beforeunload', (e) => {
+            if (env && env.isTraining) {
+                e.preventDefault();
+                e.returnValue = 'Training is in progress. Are you sure you want to leave?';
+            }
+        });
+    </script>
+</body>
+</html>
