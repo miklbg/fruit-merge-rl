@@ -1,8 +1,9 @@
 /**
- * Reinforcement Learning Interface for Fruit Merge Game
+ * Game API for Fruit Merge Game
  * 
- * This module provides a generic RL API that wraps the existing game logic.
- * It only reads game data and exposes a clean interface for RL agents.
+ * This module provides a generic API that wraps the existing game logic
+ * for programmatic control, including reinforcement learning training.
+ * It only reads game data and exposes a clean interface for agents.
  * 
  * The interface follows the OpenAI Gym-style API pattern:
  * - getObservation(): Returns the current game state
@@ -11,27 +12,39 @@
  * - getActionSpace(): Returns the action space definition
  * - getObservationSpace(): Returns the observation space definition
  * 
- * @module rl-interface
+ * Training Mode Features:
+ * - enableTrainingMode(): Disables rendering and UI updates for faster training
+ * - disableTrainingMode(): Re-enables rendering and UI updates
+ * - stepPhysics(deltaTime): Manually step the physics engine
+ * 
+ * @module game-api
  */
 
 /**
- * Create an RL environment wrapper for the Fruit Merge game
+ * Create a Game API wrapper for the Fruit Merge game
  * 
  * @param {Object} gameState - Reference to the game state object
  * @param {Object} config - Configuration options
  * @param {number} config.numDropPositions - Number of discrete drop positions (default: 20)
  * @param {number} config.rewardScale - Scale factor for rewards (default: 1.0)
- * @returns {Object} RL environment interface
+ * @returns {Object} Game API interface
  */
-export function createRLEnvironment(gameState, config = {}) {
+export function createGameAPI(gameState, config = {}) {
     const {
         numDropPositions = 20,
         rewardScale = 1.0
     } = config;
 
+    // Physics constants
+    const DEFAULT_DELTA_TIME = 1000 / 60; // ~16.67ms for 60fps physics
+
     // Track state for reward calculation
     let previousScore = 0;
     let stepCount = 0;
+    
+    // Training mode state
+    let isTrainingMode = false;
+    let renderWasRunning = false;
 
     /**
      * Get the observation space definition
@@ -300,26 +313,148 @@ export function createRLEnvironment(gameState, config = {}) {
     function getInfo() {
         return {
             name: 'FruitMerge-v1',
-            description: 'Fruit Merge puzzle game RL environment',
+            description: 'Fruit Merge puzzle game environment',
             actionSpace: getActionSpace(),
             observationSpace: getObservationSpace(),
             rewardRange: [-100 * rewardScale, Infinity],
             config: {
                 numDropPositions,
                 rewardScale
-            }
+            },
+            isTrainingMode
         };
     }
 
-    // Return the RL environment interface
+    /**
+     * Enable training mode - disables rendering and UI updates for faster training
+     * This is useful when training RL agents (e.g., with TensorFlow.js) where
+     * visual feedback is not needed and performance is critical.
+     * 
+     * @returns {boolean} True if training mode was enabled successfully
+     */
+    function enableTrainingMode() {
+        const { render, Matter } = gameState;
+        
+        if (isTrainingMode) {
+            return true; // Already in training mode
+        }
+
+        try {
+            // Stop the Matter.js renderer
+            if (render && Matter && Matter.Render) {
+                Matter.Render.stop(render);
+                renderWasRunning = true;
+            }
+
+            // Hide game UI elements if available
+            if (gameState.hideUIForTraining && typeof gameState.hideUIForTraining === 'function') {
+                gameState.hideUIForTraining();
+            }
+
+            isTrainingMode = true;
+            return true;
+        } catch (error) {
+            console.error('Failed to enable training mode:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Disable training mode - re-enables rendering and UI updates
+     * Call this after training to restore normal game display.
+     * 
+     * @returns {boolean} True if training mode was disabled successfully
+     */
+    function disableTrainingMode() {
+        const { render, Matter } = gameState;
+        
+        if (!isTrainingMode) {
+            return true; // Already in normal mode
+        }
+
+        try {
+            // Restart the Matter.js renderer
+            if (renderWasRunning && render && Matter && Matter.Render) {
+                Matter.Render.run(render);
+            }
+
+            // Show game UI elements if available
+            if (gameState.showUIAfterTraining && typeof gameState.showUIAfterTraining === 'function') {
+                gameState.showUIAfterTraining();
+            }
+
+            isTrainingMode = false;
+            renderWasRunning = false;
+            return true;
+        } catch (error) {
+            console.error('Failed to disable training mode:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Manually step the physics engine forward
+     * Useful in training mode when you want precise control over physics updates.
+     * 
+     * @param {number} deltaTime - Time step in milliseconds (default: 16.67 for ~60fps)
+     * @returns {boolean} True if physics step was executed successfully
+     */
+    function stepPhysics(deltaTime = DEFAULT_DELTA_TIME) {
+        const { engine, Matter } = gameState;
+        
+        if (!engine || !Matter || !Matter.Engine) {
+            return false;
+        }
+
+        try {
+            Matter.Engine.update(engine, deltaTime);
+            return true;
+        } catch (error) {
+            console.error('Failed to step physics:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Check if currently in training mode
+     * 
+     * @returns {boolean} True if training mode is enabled
+     */
+    function isInTrainingMode() {
+        return isTrainingMode;
+    }
+
+    /**
+     * Run multiple physics steps (useful for fast-forwarding during training)
+     * 
+     * @param {number} steps - Number of physics steps to run
+     * @param {number} deltaTime - Time step per update in milliseconds (default: ~16.67ms for 60fps)
+     * @returns {Object} Observation after all steps complete
+     */
+    function runPhysicsSteps(steps, deltaTime = DEFAULT_DELTA_TIME) {
+        for (let i = 0; i < steps; i++) {
+            stepPhysics(deltaTime);
+        }
+        return getObservation();
+    }
+
+    // Return the Game API interface
     return {
+        // Core RL-style API
         getObservation,
         getObservationSpace,
         getActionSpace,
         step,
         reset,
         getInfo,
-        actionToPosition
+        actionToPosition,
+        
+        // Training mode controls
+        enableTrainingMode,
+        disableTrainingMode,
+        isInTrainingMode,
+        stepPhysics,
+        runPhysicsSteps
     };
 }
 
@@ -361,12 +496,15 @@ export class GameStateCollector {
     }
 
     /**
-     * Create an RL environment using the collected state
+     * Create a Game API using the collected state
      * 
-     * @param {Object} config - Configuration options for the RL environment
-     * @returns {Object} RL environment interface
+     * @param {Object} config - Configuration options for the Game API
+     * @returns {Object} Game API interface
      */
     createEnvironment(config = {}) {
-        return createRLEnvironment(this.state, config);
+        return createGameAPI(this.state, config);
     }
 }
+
+// Legacy export for backward compatibility
+export const createRLEnvironment = createGameAPI;

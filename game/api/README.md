@@ -1,21 +1,22 @@
-# Reinforcement Learning Interface
+# Game API
 
-This module provides a generic RL (Reinforcement Learning) API for the Fruit Merge game, following the OpenAI Gym-style interface pattern.
+This module provides a generic API for the Fruit Merge game, designed for programmatic control including reinforcement learning training with TensorFlow.js or other frameworks.
 
 ## Overview
 
-The RL interface wraps the existing game logic without modifying it, providing a clean API for RL agents to:
-- Observe the game state
-- Take actions (drop fruits at specific positions)
-- Receive rewards based on game events
-- Reset the environment
+The Game API wraps the existing game logic without modifying it, providing a clean interface for:
+- Observing the game state
+- Taking actions (drop fruits at specific positions)
+- Receiving rewards based on game events
+- Resetting the environment
+- **Training mode**: Disabling rendering/UI for faster RL training
 
 ## Installation
 
-The RL interface is included in the game's JavaScript modules. Import it in your code:
+The Game API is included in the game's JavaScript modules. Import it in your code:
 
 ```javascript
-import { createRLEnvironment, GameStateCollector } from './rl/rl-interface.js';
+import { createGameAPI, GameStateCollector } from './api/game-api.js';
 ```
 
 ## Quick Start
@@ -23,7 +24,7 @@ import { createRLEnvironment, GameStateCollector } from './rl/rl-interface.js';
 ### Method 1: Using GameStateCollector (Recommended)
 
 ```javascript
-import { GameStateCollector } from './rl/rl-interface.js';
+import { GameStateCollector } from './api/game-api.js';
 
 // Create a collector and register game state references
 const collector = new GameStateCollector();
@@ -47,6 +48,8 @@ collector.registerMany({
     
     // Matter.js references
     world,
+    engine,  // Required for training mode
+    render,  // Required for training mode
     Matter,
     
     // Game control functions
@@ -55,7 +58,7 @@ collector.registerMany({
     handleRestart
 });
 
-// Create the RL environment
+// Create the Game API
 const env = collector.createEnvironment({
     numDropPositions: 20,  // Number of discrete actions
     rewardScale: 1.0       // Scale factor for rewards
@@ -65,19 +68,101 @@ const env = collector.createEnvironment({
 ### Method 2: Direct Creation
 
 ```javascript
-import { createRLEnvironment } from './rl/rl-interface.js';
+import { createGameAPI } from './api/game-api.js';
 
 const gameState = {
     // ... your game state references
 };
 
-const env = createRLEnvironment(gameState, {
+const env = createGameAPI(gameState, {
     numDropPositions: 20,
     rewardScale: 1.0
 });
 ```
 
-## API Reference
+## Training Mode
+
+Training mode disables rendering and UI updates for faster RL training with frameworks like TensorFlow.js.
+
+### Enabling Training Mode
+
+```javascript
+// Disable rendering for fast training
+env.enableTrainingMode();
+
+// Run training loop
+for (let episode = 0; episode < 1000; episode++) {
+    let obs = env.reset();
+    
+    while (!obs.isGameOver) {
+        const action = agent.selectAction(obs);  // Your RL agent
+        const result = env.step(action);
+        
+        // Manually step physics (faster than waiting for requestAnimationFrame)
+        // 30 steps * ~16.67ms = ~500ms of simulated physics time
+        env.runPhysicsSteps(30);
+        
+        agent.learn(result);  // Train your agent
+        obs = result.observation;
+    }
+}
+
+// Re-enable rendering when done
+env.disableTrainingMode();
+```
+
+### Training Mode API
+
+#### `enableTrainingMode()`
+
+Disables rendering and UI updates for faster training.
+
+```javascript
+const success = env.enableTrainingMode();
+// Returns: true if training mode was enabled successfully
+```
+
+#### `disableTrainingMode()`
+
+Re-enables rendering and UI updates.
+
+```javascript
+const success = env.disableTrainingMode();
+// Returns: true if training mode was disabled successfully
+```
+
+#### `stepPhysics(deltaTime)`
+
+Manually step the physics engine forward.
+
+```javascript
+env.stepPhysics(16.67);  // One frame at 60fps
+```
+
+#### `runPhysicsSteps(steps, deltaTime)`
+
+Run multiple physics steps at once. The default deltaTime is ~16.67ms (1000/60) for 60fps physics.
+
+```javascript
+// Run 30 physics steps (~500ms of simulated time at 60fps)
+const obs = env.runPhysicsSteps(30);
+// Returns: observation after all steps complete
+
+// Or specify custom deltaTime
+const obs2 = env.runPhysicsSteps(30, 1000/60);
+```
+
+#### `isInTrainingMode()`
+
+Check if currently in training mode.
+
+```javascript
+if (env.isInTrainingMode()) {
+    console.log('Training mode is active');
+}
+```
+
+## Core API Reference
 
 ### Environment Methods
 
@@ -159,11 +244,12 @@ const info = env.getInfo();
 // Returns:
 // {
 //     name: 'FruitMerge-v1',
-//     description: 'Fruit Merge puzzle game RL environment',
+//     description: 'Fruit Merge puzzle game environment',
 //     actionSpace: {...},
 //     observationSpace: {...},
 //     rewardRange: [-100, Infinity],
-//     config: { numDropPositions: 20, rewardScale: 1.0 }
+//     config: { numDropPositions: 20, rewardScale: 1.0 },
+//     isTrainingMode: false
 // }
 ```
 
@@ -219,42 +305,58 @@ The default reward function provides:
 | Game over | `-100 * rewardScale` |
 | Warning active | `-1 * rewardScale` per step |
 
-## Example: Simple Random Agent
+## Example: TensorFlow.js Training Loop
 
 ```javascript
-import { GameStateCollector } from './rl/rl-interface.js';
+import * as tf from '@tensorflow/tfjs';
+import { GameStateCollector } from './api/game-api.js';
 
-// After game initialization, create the environment
+// Setup environment
 const collector = new GameStateCollector();
 // ... register game state ...
-const env = collector.createEnvironment();
+const env = collector.createEnvironment({ numDropPositions: 20 });
 
-// Simple game loop
-async function runEpisode() {
-    let obs = env.reset();
-    let totalReward = 0;
-    
-    while (!obs.isGameOver) {
-        // Wait for drop cooldown
-        if (obs.canDrop) {
-            // Random action
-            const action = Math.floor(Math.random() * 20);
-            const result = env.step(action);
-            
-            totalReward += result.reward;
-            obs = result.observation;
-            
-            console.log(`Step reward: ${result.reward}, Total: ${totalReward}`);
+// Enable training mode for faster iteration
+env.enableTrainingMode();
+
+// Simple DQN training loop
+async function train(agent, episodes = 1000) {
+    for (let ep = 0; ep < episodes; ep++) {
+        let obs = env.reset();
+        let totalReward = 0;
+        
+        while (!obs.isGameOver) {
+            if (obs.canDrop) {
+                // Get action from agent
+                const stateTensor = tf.tensor2d([observationToArray(obs)]);
+                const action = agent.selectAction(stateTensor);
+                stateTensor.dispose();
+                
+                // Execute action
+                const result = env.step(action);
+                
+                // Run physics simulation
+                env.runPhysicsSteps(30);
+                
+                // Store transition and train
+                agent.remember(obs, action, result.reward, result.observation, result.done);
+                await agent.train();
+                
+                totalReward += result.reward;
+                obs = result.observation;
+            } else {
+                // Wait for physics to settle
+                env.runPhysicsSteps(5);
+                obs = env.getObservation();
+            }
         }
         
-        // Delay to let physics update and cooldown to pass
-        // Use at least 500ms to account for DROP_COOLDOWN_MS (400ms) plus physics simulation
-        await new Promise(r => setTimeout(r, 500));
-        obs = env.getObservation();
+        console.log(`Episode ${ep}: Score ${obs.score}, Total Reward ${totalReward}`);
     }
-    
-    console.log(`Episode finished with score: ${obs.score}`);
 }
+
+// Re-enable rendering when done
+env.disableTrainingMode();
 ```
 
 ## Fruit Levels Reference
@@ -274,8 +376,10 @@ async function runEpisode() {
 
 ## Notes
 
-- The RL interface only **reads** game state and calls existing game functions
+- The Game API only **reads** game state and calls existing game functions
 - No core gameplay logic is modified
 - Actions during cooldown periods are ignored (check `canDrop` before stepping)
 - The `fruits` array may be empty if no fruits are in play yet
 - Rewards are calculated immediately after each step, but merges happen over time due to physics simulation
+- In training mode, use `stepPhysics()` or `runPhysicsSteps()` to advance the simulation
+- For TensorFlow.js, consider using `tf.tidy()` to prevent memory leaks during training
